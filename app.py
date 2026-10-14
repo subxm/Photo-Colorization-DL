@@ -1,37 +1,45 @@
+import os
+import time
+
+import numpy as np
 import streamlit as st
 import tensorflow as tf
-import time
 from PIL import Image
-import numpy as np
+
 from preprocess import preprocess_image
 
-# -----------------------------
+# --------------------------------------------------
 # Page Configuration
-# -----------------------------
+# --------------------------------------------------
 st.set_page_config(
-    page_title="AI Image Colorizer",
-    page_icon=None,
+    page_title="Deep Learning Image Colorization",
     layout="wide"
 )
 
-# -----------------------------
+# --------------------------------------------------
 # Load CSS
-# -----------------------------
+# --------------------------------------------------
 with open("assets/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# -----------------------------
+# --------------------------------------------------
+# Create folders if they don't exist
+# --------------------------------------------------
+os.makedirs("uploads", exist_ok=True)
+os.makedirs("outputs", exist_ok=True)
+
+# --------------------------------------------------
 # Load Model
-# -----------------------------
+# --------------------------------------------------
 @st.cache_resource
 def load_model():
     return tf.keras.models.load_model("results/colorizer.keras")
 
 model = load_model()
 
-# -----------------------------
+# --------------------------------------------------
 # Header
-# -----------------------------
+# --------------------------------------------------
 st.markdown("""
 <div class="hero">
 
@@ -43,190 +51,175 @@ trained to predict realistic colors.
 </p>
 
 <span class="tech">TensorFlow</span>
-
 <span class="tech">Keras</span>
-
 <span class="tech">CNN</span>
 
 </div>
 """, unsafe_allow_html=True)
 
-# -----------------------------
+# --------------------------------------------------
 # Upload
-# -----------------------------
+# --------------------------------------------------
 uploaded = st.file_uploader(
-    "Upload an Image",
+    "Upload a Grayscale Image",
     type=["jpg", "jpeg", "png"]
 )
 
-# -----------------------------
-# Prediction
-# -----------------------------
-if uploaded is not None:
+# Stop until user uploads
+if uploaded is None:
+    st.info("Upload a grayscale image to start.")
+    st.stop()
 
-    image_path = "uploads/temp.jpg"
+# --------------------------------------------------
+# Save Upload
+# --------------------------------------------------
+image_path = "uploads/temp.jpg"
 
-    with open(image_path, "wb") as f:
-        f.write(uploaded.read())
+with open(image_path, "wb") as f:
+    f.write(uploaded.read())
 
-        # ----------------------------------
-    # AI Processing Pipeline
-    # ----------------------------------
+# --------------------------------------------------
+# Progress
+# --------------------------------------------------
+progress = st.progress(0)
+status = st.empty()
 
-    progress = st.progress(0)
+start = time.time()
 
-    status = st.empty()
+status.write("Preparing image...")
+time.sleep(0.2)
+progress.progress(20)
 
-    start = time.time()
+gray, original = preprocess_image(image_path)
 
-    status.markdown("**Preparing image...**")
-    time.sleep(0.3)
-    progress.progress(15)
+status.write("Preprocessing...")
+time.sleep(0.2)
+progress.progress(40)
 
-    gray, original = preprocess_image(image_path)
+status.write("Loading model...")
+time.sleep(0.2)
+progress.progress(60)
 
-    status.markdown("**Converting to grayscale...**")
-    time.sleep(0.3)
-    progress.progress(35)
+status.write("Running inference...")
 
-    status.markdown("**Loading trained model...**")
-    time.sleep(0.25)
-    progress.progress(55)
+prediction = model.predict(gray, verbose=0)[0]
+prediction = np.clip(prediction, 0, 1)
 
-    status.markdown("**Running neural network...**")
+progress.progress(90)
 
-    prediction = model.predict(gray, verbose=0)[0]
+status.write("Generating final image...")
+time.sleep(0.2)
 
-    progress.progress(85)
+progress.progress(100)
 
-    status.markdown("**Generating color image...**")
+elapsed = time.time() - start
 
-    prediction = np.clip(prediction, 0, 1)
+status.success(f"Completed in {elapsed:.2f} seconds")
 
-    time.sleep(0.25)
+time.sleep(0.5)
 
-    progress.progress(100)
+progress.empty()
+status.empty()
 
-    elapsed = time.time() - start
-
-    status.success(f"Completed in {elapsed:.2f} seconds")
-
-    time.sleep(0.8)
-
-    progress.empty()
-    status.empty()
-
+# --------------------------------------------------
+# Main Result
+# --------------------------------------------------
 col1, col2 = st.columns(2, gap="large")
 
 with col1:
 
-    st.markdown(
-        """
-        <div class="image-card">
-            <div class="image-title">Original Image</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+    <div class="image-card">
+        <div class="image-title">Original Image</div>
+    """, unsafe_allow_html=True)
 
     st.image(original, use_container_width=True)
 
-    st.markdown(
-        """
-            <div class="image-caption">
-                Uploaded grayscale photograph
-            </div>
+    st.markdown("""
+        <div class="image-caption">
+            Uploaded grayscale image
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
 with col2:
 
-    st.markdown(
-        """
-        <div class="image-card">
-            <div class="image-title">Colorized Image</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+    <div class="image-card">
+        <div class="image-title">Colorized Image</div>
+    """, unsafe_allow_html=True)
 
     st.image(prediction, use_container_width=True)
 
-    st.markdown(
-        """
-            <div class="image-caption">
-                Generated using the trained deep learning model
-            </div>
+    st.markdown("""
+        <div class="image-caption">
+            Generated by the trained deep learning model
         </div>
-        """,
-        unsafe_allow_html=True,
+    </div>
+    """, unsafe_allow_html=True)
+
+# --------------------------------------------------
+# Advanced View
+# --------------------------------------------------
+with st.expander("Advanced View"):
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.write("Original")
+        st.image(original)
+
+    with c2:
+        st.write("Grayscale")
+        st.image(gray[0].numpy().squeeze(), clamp=True)
+
+    with c3:
+        st.write("Prediction")
+        st.image(prediction)
+
+# --------------------------------------------------
+# Information
+# --------------------------------------------------
+st.markdown("<br>", unsafe_allow_html=True)
+
+st.markdown(
+    f"""
+<div class="info">
+
+<b>Model</b> : CNN Image Colorizer
+
+<br><br>
+
+<b>Input Size</b> : 128 × 128
+
+<br><br>
+
+<b>Processing Time</b> : {elapsed:.2f} seconds
+
+<br><br>
+
+<b>Status</b> : Complete
+
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# --------------------------------------------------
+# Download
+# --------------------------------------------------
+prediction_uint8 = (prediction * 255).astype(np.uint8)
+
+prediction_image = Image.fromarray(prediction_uint8)
+
+output_path = "outputs/colorized.png"
+prediction_image.save(output_path)
+
+with open(output_path, "rb") as file:
+    st.download_button(
+        label="Download Colorized Image",
+        data=file,
+        file_name="colorized.png",
+        mime="image/png",
+        use_container_width=True,
     )
-
-    # -----------------------------
-    # Advanced View
-    # -----------------------------
-
-    with st.expander("Advanced View"):
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            st.write("Original")
-            st.image(original)
-
-        with c2:
-            st.write("Grayscale")
-            st.image(gray[0].numpy().squeeze(), clamp=True)
-
-        with c3:
-            st.write("Prediction")
-            st.image(prediction)
-
-    # -----------------------------
-    # Information
-    # -----------------------------
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown(
-        f"""
-        <div class="info">
-
-        <b>Model</b> : CNN Image Colorizer
-
-        <br><br>
-
-        <b>Input Size</b> : 128 × 128
-
-        <br><br>
-
-        <b>Processing Time</b> : {elapsed:.2f} seconds
-
-        <br><br>
-
-        <b>Status</b> : Complete
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # -----------------------------
-    # Download
-    # -----------------------------
-
-    prediction_uint8 = (prediction * 255).astype(np.uint8)
-
-    prediction_image = Image.fromarray(prediction_uint8)
-
-    prediction_image.save("outputs/colorized.png")
-
-    with open("outputs/colorized.png", "rb") as file:
-
-        st.download_button(
-            label="Download Colorized Image",
-            data=file,
-            file_name="colorized.png",
-            mime="image/png",
-            use_container_width=True,
-        )
